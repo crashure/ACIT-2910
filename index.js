@@ -36,6 +36,8 @@ var arr = {
 
 // used to determine whether we are open or closed - closed on default
 var storeStatus = false;
+// used to calculate how much quantity was sold - 100 of each item for now
+var startQty = 100;
 
 //SESSION SETTING
 app.use(session({
@@ -725,18 +727,6 @@ app.post("/weAreOpen", function(req, resp){
            resp.send(obj);
         }
         
-        client.query("UPDATE inventory SET qty=(100)", function(err, result){
-            done();
-            if(err){
-                console.log(err);
-                var obj = {
-                   status:"fail",
-                   msg:"invalid"
-                }
-                resp.send(obj);
-            }
-        });
-        
         client.query("UPDATE totalreadyitems SET qty=(0)", function(err, result){
             done();
             if(err){
@@ -856,7 +846,6 @@ app.post("/getItem", function(req, resp){
             
             if(result.rows.length > 0){
                 resp.send(result.rows);
-                console.log(result.rows);
             } else {
                 resp.send({status:"fail"});
             }
@@ -864,14 +853,14 @@ app.post("/getItem", function(req, resp){
     })
 });
 
-app.post("/getOrders", function(req, resp){    
+app.post("/getSold", function(req, resp){    
     pg.connect(dbURL, function(err, client, done){
         if(err){
             console.log(err);
             resp.send({status:"fail"});
         }
         
-        client.query("SELECT * FROM orders", function(err, result){
+        client.query("SELECT * FROM INVENTORY WHERE QTY < ($1)", [startQty], function(err, result){
             done();
             if(err){
                 console.log(err);
@@ -880,31 +869,6 @@ app.post("/getOrders", function(req, resp){
             
             if(result.rows.length > 0){
                 resp.send(result.rows);
-                console.log(result.rows);
-            } else {
-                resp.send({status:"fail"});
-            }
-        });
-    })
-});
-
-app.post("/getItems", function(req, resp){    
-    pg.connect(dbURL, function(err, client, done){
-        if(err){
-            console.log(err);
-            resp.send({status:"fail"});
-        }
-        
-        client.query("SELECT * FROM items", function(err, result){
-            done();
-            if(err){
-                console.log(err);
-                resp.send({status:"fail"});
-            }
-            
-            if(result.rows.length > 0){
-                resp.send(result.rows);
-                console.log(result.rows);
             } else {
                 resp.send({status:"fail"});
             }
