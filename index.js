@@ -24,6 +24,7 @@ app.use("/css", express.static("style"));
 
 //REDIRECT /fp to the MENU ITEMS FOLDER
 app.use("/fp", express.static("menuItems"));
+app.use("/pages/imgs", express.static("pages/imgs"));
 
 app.use('/bjs', express.static(__dirname + '/node_modules/bootstrap/dist/js')); // redirect bootstrap JS
 app.use('/bjs', express.static(__dirname + '/node_modules/jquery/dist')); // redirect JS jQuery
@@ -86,7 +87,6 @@ app.get("/menu", function(req, resp){
 //            resp.sendFile(pF+"/closed.html");
 //        } else {
             resp.sendFile(pF+"/menu.html");
-        
     } else {
         resp.sendFile(pF+"/login.html")
     }
@@ -313,9 +313,42 @@ app.post("/menuCount", function(req, resp){
     });
 });
 
+//This is for the contraint of only adding unique items to the Cart
+app.post("/orderingIndividualItem", function(req, resp){
+    var itemName = req.body.itemName;
+     pg.connect(dbURL, function(err, client, done){
+        if(err){
+            console.log(err);
+            var obj = {
+                status: "fail",
+                msg: "CONNECTION FAIL"
+            }
+            resp.send(obj);
+        }
+            if(req.session.orderNum){
+                client.query("SELECT * FROM items WHERE orderid = ($1) AND itemname = ($2)", [req.session.orderNum, itemName], function(err, result){
+                   done();
+                    if(err){
+                        console.log(err);
+                    }
+
+                    if(result.rows.length > 0){
+                        resp.send({status:"fail"})
+                    } else {
+                        resp.send({status:"success"})
+                    }
+                });  
+            } else {
+                //Reason I am still sending a success is because since their session orderNum isnt defined and they will get it on the next ajax call... this is fundamentally broken as they can log out and then log in again to order the same item as they have already found
+                resp.send({status:"success"});
+            }
+     });
+});
+
 app.post("/ordering", function(req, resp){
     var orderName = req.body.itemName;
     var orderPrice = req.body.price;
+    var orderQty = req.body.qty
     var b00lean;
     
     if(req.session.itemCount > 9){
@@ -385,7 +418,7 @@ app.post("/ordering", function(req, resp){
 
     
     function insertItems(client, done, rr){
-        client.query("INSERT INTO items (orderid, itemname, itemqty, price) VALUES ($1, $2, $3, $4)", [rr, orderName, 1, orderPrice],function(err, result){
+        client.query("INSERT INTO items (orderid, itemname, itemqty, price) VALUES ($1, $2, $3, $4)", [rr, orderName, orderQty, orderPrice],function(err, result){
             done();
             if(err){
                 console.log(err);
@@ -477,6 +510,9 @@ app.post("/checkout", function(req, resp){
             }
             resp.send(obj);
         }
+        client.query("INSERT INTO adminItems (itemName, qty, price) SELECT itemName, itemqty, price FROM items WHERE orderid = $1", [req.session.orderNum], function(err, result){
+            done();
+        });
         
         client.query("INSERT INTO kitchen (itemName, orderid, qty, price) SELECT itemName, orderid, itemqty, price FROM items WHERE orderid = $1 RETURNING itemName, qty", [req.session.orderNum], function(err, result){
             done();
@@ -672,9 +708,20 @@ app.post("/removeItems", function(req,resp){
                     };
                 }
             });
+            
+            client.query("SELECT updatecooked($2, $1)", [qty, itemname], function(err, result){
+                done();
+                if(err){
+                        console.log(err);
+                    console.log("Didnt work yo");
+                        var obj = {
+                            status:"fail"
+                        }
+                }
+
+            });
 
         });
-        
     }
     
     var orderid = req.body.orderid;
@@ -1073,6 +1120,33 @@ app.post("/removeMyItem", function(req,resp){
         });
     });
 });
+
+app.post("/SalesByDay", function(req, resp){
+     pg.connect(dbURL, function(err, client, done){
+       if(err){
+           console.log(err);
+           var obj = {
+               status:"fail",
+               msg:"CONNECTION FAIL"
+           }
+           resp.send(obj);
+        }
+        
+        client.query("SELECT date, SUM(qty * price) AS total FROM adminitems GROUP BY date", [], function(err, result){
+            done();
+            if(err){console.log(err)}
+            if(result.rows.length > 0){
+                    var obj = {
+                        status:"success",
+                        rows: result.rows
+                    }
+                    resp.send(obj);
+            } else {
+                resp.send({status:"fail"});
+            }
+        });
+     });
+});
 // End of Admin
 
 //Start of NowServing
@@ -1198,7 +1272,7 @@ io.on("connection", function(socket){
                     }
                 }
 
-                client.query("DELETE FROM cookeditems WHERE NOW() - timecooked > '5 minutes' RETURNING itemname, qty", [], function(err, result){
+                client.query("DELETE FROM cookeditems WHERE NOW() - timecooked > '2 minutes' RETURNING itemname, qty", [], function(err, result){
                     done();
                     if(err){
                             console.log(err);
